@@ -12,7 +12,7 @@ metadata:
 
 # Cyber News Digest Skill
 
-Curates cybersecurity headlines for Cursor and VS Code workflows by fetching RSS sources, scoring relevance, scraping missing content, and emitting ready-to-use JSON payloads.
+Curates cybersecurity headlines for Cursor and VS Code workflows by fetching RSS sources, scoring relevance, scraping missing content, and emitting exact sectioned text for the assistant to summarize.
 
 ## Quick Setup
 
@@ -29,23 +29,28 @@ cp .env.example .env  # optional
 ./run.sh
 ```
 
-If you need plain-text output:
+### Cursor/VS Code agent contract
+
+Use this command for machine consumption:
 
 ```bash
-export DIGEST_OUTPUT=text
 ./run.sh
 ```
 
+Parse **stdout** as this exact sectioned text:
+
+- Overview instructions block
+- `## Overview` section
+- `## Full Articles (N) — Summarize each in detail` section
+
+Treat anything on **stderr** as diagnostics.
+
 ## Output
 
-- JSON: object with `generatedAt` and `items`
-- `items[]` includes:
-  - `title`
-  - `link`
-  - `source`
-  - `region`
-  - `score`
-  - `summary` (article text prepared for your model to summarize)
+The output content includes scraped article text under each full-article section, between:
+
+- `--- Content to summarize ---`
+- `--- End ---`
 
 ## How this is used in agent contexts
 

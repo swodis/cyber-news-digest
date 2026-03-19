@@ -40,14 +40,25 @@ For a single-command first run:
 
 ## Output
 
-By default, output is JSON to stdout with a list of extracted items ready for agent-side summarization.
-The `summary` field contains the article text prepared for your model to summarize.
+Output is written to stdout in this exact sectioned text format:
 
-```json
-{
-  "generatedAt": "...",
-  "items": [...]
-}
+```text
+Daily Security News Briefing — Month Day, Year
+
+## Instructions for Overview
+...
+## Overview
+• **headline title** (source)
+  source link
+  excerpt...
+
+## Full Articles (N) — Summarize each in detail
+## Article: ...
+Source: ...
+Link: ...
+--- Content to summarize ---
+...
+--- End ---
 ```
 
-Switch to plain text mode with `DIGEST_OUTPUT=text`.
+Runtime diagnostics are sent to `stderr` only when `DIGEST_VERBOSE=1`.

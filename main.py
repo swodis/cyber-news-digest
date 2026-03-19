@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Cyber News Digest - Fetches, filters, and prepares cybersecurity news."""
+"""Cyber News Digest - fetches, scores, and prepares cybersecurity headlines."""
 
 import json
 import os
 import re
+import sys
 from email.utils import parsedate_to_datetime
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -15,19 +16,81 @@ from bs4 import BeautifulSoup
 # Configuration
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "news-sources.json"
-OUTPUT_MODE = os.environ.get("DIGEST_OUTPUT", "json").lower()
+SEEN_PATH = SCRIPT_DIR / "data" / "seen.json"
+SEEN_RETENTION_DAYS = 30
 REQUEST_TIMEOUT = 12
+SCRAPE_TIMEOUT = 5
+VERBOSE = os.environ.get("DIGEST_VERBOSE", "0").lower() in {"1", "true", "yes", "on"}
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
-SCRAPE_TIMEOUT = 5
+
+REGION_KEYWORDS = ["europe", "eu", "scandinavia", "nordic", "sweden", "norway", "finland", "denmark", "baltic", "lithuania", "latvia", "estonia"]
+REGION_SCORE = 8
+FOCUS_SCORE = 5
+
+
+def log(message: str) -> None:
+    if VERBOSE:
+        print(message, file=sys.stderr)
 
 
 def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_seen() -> set[str]:
+    try:
+        with open(SEEN_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+            cutoff = datetime.now().date() - timedelta(days=SEEN_RETENTION_DAYS)
+            entries = (data.get("entries") or []) if isinstance(data, dict) else []
+            return {
+                item.get("link")
+                for item in entries
+                if isinstance(item, dict)
+                and item.get("shownAt")
+                and datetime.fromisoformat(item["shownAt"]).date() >= cutoff
+            }
+    except Exception:
+        return set()
+
+
+def save_seen(new_links: set[str]) -> None:
+    today = datetime.now().date().isoformat()
+    cutoff = datetime.now().date() - timedelta(days=SEEN_RETENTION_DAYS)
+
+    entries: list[dict[str, str]] = []
+    if SEEN_PATH.exists():
+        try:
+            with open(SEEN_PATH, encoding="utf-8") as f:
+                data = json.load(f)
+                existing = data.get("entries") if isinstance(data, dict) else None
+                if isinstance(existing, list):
+                    entries = existing
+        except Exception:
+            entries = []
+
+    existing = []
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        shown_at = item.get("shownAt")
+        try:
+            if shown_at and datetime.fromisoformat(shown_at).date() >= cutoff:
+                existing.append(item)
+        except Exception:
+            continue
+
+    for link in sorted(new_links):
+        existing.append({"link": link, "shownAt": today})
+
+    SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SEEN_PATH, "w", encoding="utf-8") as f:
+        json.dump({"entries": existing, "lastUpdated": today}, f, indent=2, ensure_ascii=False)
 
 
 def _local_name(tag: str) -> str:
@@ -59,7 +122,6 @@ def _child_text(node: ET.Element, names: set[str]) -> str:
 def _parse_pub_date(raw: str) -> datetime:
     if not raw:
         return datetime.now()
-
     try:
         parsed = parsedate_to_datetime(raw)
         return parsed.replace(tzinfo=None)
@@ -82,7 +144,7 @@ def _parse_pub_date(raw: str) -> datetime:
 
 def fetch_feed(source: dict) -> list[dict]:
     try:
-        print(f"Fetching {source['name']}...")
+        log(f"Fetching {source['name']}...")
         response = requests.get(
             source["url"],
             headers={"User-Agent": USER_AGENT},
@@ -91,15 +153,11 @@ def fetch_feed(source: dict) -> list[dict]:
         response.raise_for_status()
 
         root = ET.fromstring(response.text)
-        items: list[dict] = []
         candidates: list[ET.Element] = [*root.findall(".//item"), *root.findall(".//entry")]
-
         if not candidates:
-            candidates = [
-                node for node in root.iter()
-                if _local_name(node.tag).lower() in {"item", "entry"}
-            ]
+            candidates = [node for node in root.iter() if _local_name(node.tag).lower() in {"item", "entry"}]
 
+        items: list[dict] = []
         for node in candidates:
             title = _child_text(node, {"title"}) or node.findtext("title", default="").strip()
             link = (
@@ -127,10 +185,9 @@ def fetch_feed(source: dict) -> list[dict]:
                 "source": source["name"],
                 "region": source.get("region", "global"),
             })
-
         return items
     except Exception as e:
-        print(f"Error fetching {source['name']}: {e}")
+        print(f"Error fetching {source['name']}: {e}", file=sys.stderr)
         return []
 
 
@@ -138,31 +195,25 @@ def score_article(article: dict, keywords: list[str]) -> int:
     score = 0
     text = (article["title"] + " " + article["content"]).lower()
 
-    for kw in keywords:
-        if kw.lower() in text:
-            score += 5
+    for keyword in keywords:
+        lower = keyword.lower()
+        if lower in REGION_KEYWORDS:
+            if lower in text:
+                score += REGION_SCORE
+        elif lower in text:
+            score += FOCUS_SCORE
 
     if "zero-day" in text or "0-day" in text:
         score += 3
-    if any(x in text for x in ["critical", "vulnerability", "cve-"]):
+    if any(tag in text for tag in ["critical", "vulnerability", "cve-"]):
         score += 2
-    if any(x in text for x in ["breach", "hack", "ransomware"]):
+    if any(tag in text for tag in ["breach", "hack", "ransomware"]):
         score += 1
 
-    today = datetime.now().date()
-    if article["pubDate"].date() == today:
+    if article["pubDate"].date() == datetime.now().date():
         score += 2
 
     return score
-
-
-def summarize_text_for_agent(text: str) -> str:
-    cleaned = re.sub(r"\s+", " ", (text or "").strip())
-    if not cleaned:
-        return "No article text available."
-    if len(cleaned) > 6000:
-        return cleaned[:6000] + "\n[... truncated]"
-    return cleaned
 
 
 def scrape_content(url: str) -> str:
@@ -188,82 +239,127 @@ def scrape_content(url: str) -> str:
         return ""
 
 
-def build_plain_output(digest: list[dict]) -> str:
-    lines = [f"Cyber News Digest - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
-    lines.append("")
-    for idx, item in enumerate(digest, 1):
-        lines.append(f"{idx}. {item['title']}")
-        lines.append(f"Source: {item['source']}")
-        lines.append(f"Link: {item['link']}")
-        lines.append(f"Score: {item['score']}")
-        lines.append(f"Text for summary: {item['summary']}")
+def print_for_ai(overview: list[dict], full_articles: list[dict]) -> str:
+    sep = "─" * 60
+    date_str = datetime.now().strftime("%B %d, %Y").replace(" 0", " ")
+
+    lines = [
+        "",
+        sep,
+        f"Daily Security News Briefing — {date_str}",
+        sep,
+        "",
+        "## Instructions for Overview",
+        "",
+        "Produce an Overview first, structured as follows. Use the headlines and article content below to populate each section. Place items where they fit best. Use \"───\" as section dividers.",
+        "",
+        "**🌍 Global Headlines (Last 24 Hours)**",
+        "2–4 major worldwide incidents: ransomware, breaches, zero-days, critical vulnerabilities. One paragraph per item.",
+        "",
+        "**🇪🇺 European & Nordic Developments**",
+        "EU/Nordic-specific news: nation-state activity, regional partnerships, elections, critical infrastructure. One paragraph per item.",
+        "",
+        "**📜 Regulatory & Compliance Updates**",
+        "GDPR, NIS2, new legislation, enforcement actions. ",
+        "",
+        "**⚠️ Threat Landscape Summary**",
+        "Bullet summary of: ransomware trends, notable threat actors, and key vulnerabilities/CVEs to patch (with severity where known).",
+        "",
+        f"Then provide detailed summaries of the {len(full_articles)} full articles below.",
+        "",
+        sep,
+        "## Overview",
+    ]
+
+    for idx, headline in enumerate(overview, start=1):
+        excerpt = re.sub(r"\s+", " ", (headline["content"] or "").strip())[:400]
+        lines.append(f"{idx}. {headline['title']} ({headline['source']})")
+        lines.append(f"   Link: {headline['link']}")
+        lines.append(f"   Region: {headline['region']}")
+        if excerpt:
+            lines.append(f"   Excerpt: {excerpt}...")
+        lines.append(f"   Score: {headline['score']}")
         lines.append("")
+
+    lines.append(sep)
+    lines.append("")
+    lines.append(f"## Full Articles ({len(full_articles)}) — Summarize each in detail")
+    lines.append(sep)
+    lines.append("")
+
+    for article in full_articles:
+        lines.append(f"## Article: {article['title']}")
+        lines.append(f"Source: {article['source']}")
+        lines.append(f"Link: {article['link']}")
+        lines.append("")
+        lines.append("--- Content to summarize ---")
+        lines.append(article["content"])
+        lines.append("")
+        lines.append("--- End ---")
+        lines.append("")
+
+    lines.append(sep)
     return "\n".join(lines).strip()
 
 
 def main() -> None:
-    print(f"[{datetime.now().isoformat()}] Starting Cyber News Digest...")
+    log(f"[{datetime.now().isoformat()}] Fetching cyber news...")
     config = load_config()
     keywords = config.get("focusKeywords", [])
+    seen_links = load_seen()
 
     all_articles = []
     for source in config["sources"]:
         all_articles.extend(fetch_feed(source))
 
     if not all_articles:
-        print("No articles fetched from any source.")
+        print("No articles fetched.", file=sys.stderr)
         return
 
-    seen_titles = set()
     unique_articles = []
-    for art in all_articles:
-        normalized = art["title"].lower().strip()
+    seen_titles = set()
+    for article in all_articles:
+        normalized = article["title"].lower().strip()
         if normalized not in seen_titles:
             seen_titles.add(normalized)
-            unique_articles.append(art)
+            unique_articles.append(article)
 
-    for art in unique_articles:
-        art["score"] = score_article(art, keywords)
-
-    unique_articles.sort(key=lambda x: x["score"], reverse=True)
-    top_articles = unique_articles[: config.get("maxArticles", 5)]
-
-    if not top_articles:
-        print("No articles found after filtering.")
+    new_articles = [article for article in unique_articles if article["link"] not in seen_links]
+    if not new_articles:
+        print("No new articles since the last run.", file=sys.stderr)
         return
 
-    print(f"Processing top {len(top_articles)} articles...")
+    for article in new_articles:
+        article["score"] = score_article(article, keywords)
 
-    digest = []
+    new_articles.sort(key=lambda item: item["score"], reverse=True)
+
+    overview_pool = min(config.get("overviewPool", 25), len(new_articles), 5)
+    max_full = min(config.get("maxArticles", 5), 5)
+    headlines = new_articles[:overview_pool]
+    top_articles = new_articles[:max_full]
+
+    if not top_articles:
+        print("No articles found after filtering.", file=sys.stderr)
+        return
+
+    log(f"Enriching {len(top_articles)} full articles (scraping where needed)...")
     for article in top_articles:
-        print(f"Preparing article for Agent summary: {article['title']}")
-        text_to_summarize = article["content"]
-        if len(text_to_summarize) < 500:
+        if len(article["content"]) < 500:
             scraped = scrape_content(article["link"])
-            if len(scraped) > len(text_to_summarize):
-                text_to_summarize = scraped
+            if len(scraped) > len(article["content"]):
+                article["content"] = scraped
+        if len(article["content"]) > 6000:
+            article["content"] = article["content"][:6000] + "\n[... truncated]"
 
-        summary = summarize_text_for_agent(text_to_summarize)
+    print(print_for_ai(headlines, top_articles))
 
-        digest.append({
-            "title": article["title"],
-            "link": article["link"],
-            "source": article["source"],
-            "region": article["region"],
-            "score": article["score"],
-            "summary": summary,
-            "generatedAt": datetime.now().isoformat(),
-        })
-
-    payload = {
-        "generatedAt": datetime.now().isoformat(),
-        "items": digest,
+    links_to_save = {
+        *[h["link"] for h in headlines if h.get("link")],
+        *[a["link"] for a in top_articles if a.get("link")],
     }
-
-    if OUTPUT_MODE == "text":
-        print(build_plain_output(digest))
-    else:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    save_seen(links_to_save)
+    log("Done. Summarize the overview and articles above.")
 
 
 if __name__ == "__main__":
