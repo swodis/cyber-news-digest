@@ -8,8 +8,13 @@ if [ -f .env ]; then
   set +a
 fi
 
+PYTHON_BIN="python3"
 if [ -d .venv ]; then
-  exec .venv/bin/python main.py >> /tmp/cyber-news-digest.log 2>&1
+  PYTHON_BIN=".venv/bin/python"
+fi
+
+if [ "${DIGEST_LOG:-0}" = "1" ]; then
+  exec "$PYTHON_BIN" main.py >> /tmp/cyber-news-digest.log 2>&1
 else
-  exec python3 main.py >> /tmp/cyber-news-digest.log 2>&1
+  exec "$PYTHON_BIN" main.py
 fi

@@ -43,7 +43,8 @@ Parse **stdout** as this exact sectioned text:
 - `## Overview` section
 - `## Full Articles (N) — Summarize each in detail` section
 
-Treat anything on **stderr** as diagnostics.
+Treat anything on **stderr** as diagnostics.  
+`run.sh` no longer redirects by default; set `DIGEST_LOG=1` only if you want logging to `/tmp/cyber-news-digest.log`.
 
 ## Output
 

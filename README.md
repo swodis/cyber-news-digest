@@ -33,6 +33,13 @@ For a single-command first run:
 # or: python main.py
 ```
 
+By default, `run.sh` writes output to stdout/stderr for agent parsing.
+To keep the old log redirection behavior, set:
+
+```bash
+DIGEST_LOG=1 ./run.sh
+```
+
 ## Requirements
 
 - Python 3 with dependencies from `requirements.txt` (installed by `setup.sh`)
