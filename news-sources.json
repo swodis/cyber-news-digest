@@ -1,0 +1,23 @@
+{
+    "sources": [
+      { "name": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "priority": 1, "region": "global" },
+      { "name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/", "priority": 1, "region": "global" },
+      { "name": "Schneier on Security", "url": "https://www.schneier.com/blog/feed/", "priority": 1, "region": "global" },
+      { "name": "Infosecurity Magazine", "url": "https://www.infosecurity-magazine.com/rss/news/", "priority": 1, "region": "global" },
+      { "name": "CSO Online", "url": "https://www.csoonline.com/feed/", "priority": 1, "region": "global" },
+      { "name": "Threatpost", "url": "https://threatpost.com/feed/", "priority": 1, "region": "global" },
+      { "name": "ZDNet Security", "url": "https://www.zdnet.com/topic/security/rss.xml", "priority": 1, "region": "global" },
+      { "name": "Security Affairs", "url": "https://securityaffairs.co/feed/", "priority": 2, "region": "global" },
+      { "name": "Help Net Security", "url": "https://www.helpnetsecurity.com/feed/", "priority": 2, "region": "global" },
+      { "name": "The Register Security", "url": "https://www.theregister.com/security/headlines.atom", "priority": 2, "region": "global" },
+      { "name": "MSRC", "url": "https://msrc.microsoft.com/blog/feed/", "priority": 3, "region": "US" },
+      { "name": "NVD", "url": "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-cve-misc.xml", "priority": 3, "region": "global" }
+    ],
+    "regions": ["Europe", "Scandinavia"],
+    "maxArticles": 5,
+    "overviewPool": 25,
+    "maxSentences": 15,
+    "trendingWeight": 2,
+    "deduplicate": true,
+    "focusKeywords": ["Europe", "EU", "Sweden", "Norway", "Finland", "Denmark", "Scandinavia", "Baltic", "Lithuania", "Latvia", "Estonia", "GDPR", "ENISA"]
+  }

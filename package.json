@@ -1,0 +1,16 @@
+{
+  "name": "cyber-news-digest",
+  "version": "1.0.0",
+  "description": "Fetches, filters, and summarizes cybersecurity news. Outputs to console. For Cursor/VS Code.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "digest": "node index.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12",
+    "node-fetch": "^3.3.2",
+    "rss-parser": "^3.13.0"
+  }
+}
