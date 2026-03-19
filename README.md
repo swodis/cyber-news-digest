@@ -1,10 +1,13 @@
 # Cyber News Digest
 
-Fetches, filters, summarizes and reports cybersecurity news using a local LLM (Ollama). Sends a daily brief to Telegram.
+Fetches, filters, summarizes and prepares cybersecurity news digests using a local LLM (Ollama).
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and set `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`
+1. Copy `.env.example` to `.env` and optionally set:
+   - `OLLAMA_URL` (default: `http://localhost:11434/api/generate`)
+   - `OLLAMA_MODEL` (default: `qwen3:14b`)
+   - `DIGEST_OUTPUT` (`json` for machine consumption, `text` for human-friendly output)
 2. Edit `news-sources.json` to configure RSS feeds and keywords
 3. Create venv and install deps:
 
@@ -23,4 +26,17 @@ python3 -m venv .venv
 ## Requirements
 
 - Ollama with `qwen3:14b` (or set `OLLAMA_MODEL`)
-- Telegram bot token and chat ID
+- Python packages from `requirements.txt`
+
+## Output
+
+By default, output is JSON to stdout with a list of summarized items.
+
+```json
+{
+  "generatedAt": "...",
+  "items": [...]
+}
+```
+
+Switch to plain text mode with `DIGEST_OUTPUT=text`.
