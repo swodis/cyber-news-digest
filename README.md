@@ -1,19 +1,23 @@
 # Cyber News Digest
 
-Fetches, filters, summarizes and prepares cybersecurity news digests using a local LLM (Ollama).
+Fetches, filters, and prepares cybersecurity news digests for local AI tools (Cursor/VS Code).
+
+Cursor/VS Code can load this as a skill via `SKILL.md`.
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and optionally set:
-   - `OLLAMA_URL` (default: `http://localhost:11434/api/generate`)
-   - `OLLAMA_MODEL` (default: `qwen3:14b`)
-   - `DIGEST_OUTPUT` (`json` for machine consumption, `text` for human-friendly output)
-2. Edit `news-sources.json` to configure RSS feeds and keywords
-3. Create venv and install deps:
+1. No model setup required.
+2. Run:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+./setup.sh
+```
+3. Edit `news-sources.json` to configure RSS feeds and keywords
+
+For a single-command first run:
+
+```bash
+./start.sh
 ```
 
 ## Run
@@ -25,12 +29,13 @@ python3 -m venv .venv
 
 ## Requirements
 
-- Ollama with `qwen3:14b` (or set `OLLAMA_MODEL`)
-- Python packages from `requirements.txt`
+- Python 3 with dependencies from `requirements.txt` (installed by `setup.sh`)
+- Node.js + npm for optional legacy `index.js` usage
 
 ## Output
 
-By default, output is JSON to stdout with a list of summarized items.
+By default, output is JSON to stdout with a list of extracted items ready for agent-side summarization.
+The `summary` field contains the article text prepared for your model to summarize.
 
 ```json
 {

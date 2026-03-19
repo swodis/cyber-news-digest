@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cyber News Digest - Fetches, filters, summarizes and reports cybersecurity news."""
+"""Cyber News Digest - Fetches, filters, and prepares cybersecurity news."""
 
 import json
 import os
@@ -10,22 +10,16 @@ from pathlib import Path
 import feedparser
 import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Configuration
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "news-sources.json"
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:14b")
 OUTPUT_MODE = os.environ.get("DIGEST_OUTPUT", "json").lower()
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
-REQUEST_TIMEOUT = 10
 SCRAPE_TIMEOUT = 5
 
 
@@ -94,34 +88,13 @@ def score_article(article: dict, keywords: list[str]) -> int:
     return score
 
 
-def summarize_with_ollama(text: str) -> str:
-    if not text or len(text) < 100:
-        return "Content too short to summarize."
-
-    truncated = text[:6000]
-    prompt = (
-        "You are a cybersecurity analyst. Summarize the following article in a "
-        "concise bulleted list (max 15 sentences total). "
-        "Focus specifically on the impact to Europe and Scandinavia if mentioned. "
-        "If no specific region is mentioned, focus on the technical severity and impact. "
-        "Do not use markdown bolding in the summary text, just plain text.\n\n"
-        "Article Text:\n"
-        f"{truncated}"
-    )
-
-    try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={"model": MODEL, "prompt": prompt, "stream": False},
-            headers={"Content-Type": "application/json"},
-            timeout=120,
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "").strip()
-    except Exception as error:
-        print(f"Ollama summary error: {error}")
-        return "Failed to generate summary."
+def summarize_text_for_agent(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", (text or "").strip())
+    if not cleaned:
+        return "No article text available."
+    if len(cleaned) > 6000:
+        return cleaned[:6000] + "\n[... truncated]"
+    return cleaned
 
 
 def scrape_content(url: str) -> str:
@@ -155,7 +128,7 @@ def build_plain_output(digest: list[dict]) -> str:
         lines.append(f"Source: {item['source']}")
         lines.append(f"Link: {item['link']}")
         lines.append(f"Score: {item['score']}")
-        lines.append(f"Summary: {item['summary']}")
+        lines.append(f"Text for summary: {item['summary']}")
         lines.append("")
     return "\n".join(lines).strip()
 
@@ -195,14 +168,14 @@ def main() -> None:
 
     digest = []
     for article in top_articles:
-        print(f"Summarizing: {article['title']}")
+        print(f"Preparing article for Agent summary: {article['title']}")
         text_to_summarize = article["content"]
         if len(text_to_summarize) < 500:
             scraped = scrape_content(article["link"])
             if len(scraped) > len(text_to_summarize):
                 text_to_summarize = scraped
 
-        summary = summarize_with_ollama(text_to_summarize)
+        summary = summarize_text_for_agent(text_to_summarize)
 
         digest.append({
             "title": article["title"],
