@@ -22,6 +22,34 @@ REQUEST_TIMEOUT = 12
 SCRAPE_TIMEOUT = 5
 VERBOSE = os.environ.get("DIGEST_VERBOSE", "0").lower() in {"1", "true", "yes", "on"}
 
+
+def _read_bool_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _proxy_is_configured() -> bool:
+    return bool(
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or os.environ.get("ALL_PROXY")
+        or os.environ.get("all_proxy")
+    )
+
+
+PROXY_CONFIGURED = _proxy_is_configured()
+VERIFY_SSL = _read_bool_env("DIGEST_SSL_VERIFY", True)
+SSL_FALLBACK = _read_bool_env("DIGEST_SSL_FALLBACK", PROXY_CONFIGURED)
+CUSTOM_CA_BUNDLE = (
+    os.environ.get("DIGEST_CA_BUNDLE")
+    or os.environ.get("REQUESTS_CA_BUNDLE")
+    or os.environ.get("SSL_CERT_FILE")
+)
+
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -35,6 +63,29 @@ FOCUS_SCORE = 5
 def log(message: str) -> None:
     if VERBOSE:
         print(message, file=sys.stderr)
+
+
+def request_get(url: str, timeout: int) -> requests.Response:
+    verify_setting = VERIFY_SSL
+    if CUSTOM_CA_BUNDLE:
+        verify_setting = CUSTOM_CA_BUNDLE
+
+    try:
+        return requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=timeout,
+            verify=verify_setting,
+        )
+    except requests.exceptions.SSLError as error:
+        print(f"SSL error while requesting {url}: {error}", file=sys.stderr)
+        if SSL_FALLBACK and VERIFY_SSL:
+            if PROXY_CONFIGURED:
+                log("Corporate proxy detected; retrying request with SSL verification disabled.")
+            else:
+                log("Retrying request with SSL verification disabled.")
+            return requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout, verify=False)
+        raise
 
 
 def load_config() -> dict:
@@ -145,11 +196,7 @@ def _parse_pub_date(raw: str) -> datetime:
 def fetch_feed(source: dict) -> list[dict]:
     try:
         log(f"Fetching {source['name']}...")
-        response = requests.get(
-            source["url"],
-            headers={"User-Agent": USER_AGENT},
-            timeout=REQUEST_TIMEOUT,
-        )
+        response = request_get(source["url"], timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
         root = ET.fromstring(response.text)
@@ -218,11 +265,7 @@ def score_article(article: dict, keywords: list[str]) -> int:
 
 def scrape_content(url: str) -> str:
     try:
-        response = requests.get(
-            url,
-            headers={"User-Agent": USER_AGENT},
-            timeout=SCRAPE_TIMEOUT,
-        )
+        response = request_get(url, timeout=SCRAPE_TIMEOUT)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
