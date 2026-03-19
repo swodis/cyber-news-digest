@@ -4,10 +4,11 @@
 import json
 import os
 import re
+from email.utils import parsedate_to_datetime
 from datetime import datetime
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
-import feedparser
 import requests
 from bs4 import BeautifulSoup
 
@@ -15,6 +16,7 @@ from bs4 import BeautifulSoup
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "news-sources.json"
 OUTPUT_MODE = os.environ.get("DIGEST_OUTPUT", "json").lower()
+REQUEST_TIMEOUT = 12
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -28,38 +30,104 @@ def load_config() -> dict:
         return json.load(f)
 
 
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _child_text(node: ET.Element, names: set[str]) -> str:
+    wanted = {name.lower() for name in names}
+    for child in list(node):
+        child_name = _local_name(child.tag).lower()
+        if child_name in wanted:
+            if child.text and child.text.strip():
+                return child.text.strip()
+            for attr in ("href", "url", "src"):
+                if child.attrib.get(attr):
+                    return child.attrib[attr].strip()
+
+        for subchild in list(child):
+            sub_name = _local_name(subchild.tag).lower()
+            if sub_name in wanted:
+                if subchild.text and subchild.text.strip():
+                    return subchild.text.strip()
+            if sub_name in {"encoded", "content", "description", "summary"}:
+                if subchild.text and subchild.text.strip():
+                    return subchild.text.strip()
+    return ""
+
+
+def _parse_pub_date(raw: str) -> datetime:
+    if not raw:
+        return datetime.now()
+
+    try:
+        parsed = parsedate_to_datetime(raw)
+        return parsed.replace(tzinfo=None)
+    except Exception:
+        pass
+
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(raw, fmt)
+        except Exception:
+            continue
+    return datetime.now()
+
+
 def fetch_feed(source: dict) -> list[dict]:
     try:
         print(f"Fetching {source['name']}...")
-        feed = feedparser.parse(
+        response = requests.get(
             source["url"],
-            agent=USER_AGENT,
-            request_headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": USER_AGENT},
+            timeout=REQUEST_TIMEOUT,
         )
-        items = []
-        for entry in feed.entries:
-            content = ""
-            if hasattr(entry, "content") and entry.content:
-                content = entry.content[0].get("value", "")
-            elif hasattr(entry, "content_encoded"):
-                content = entry.content_encoded
-            elif hasattr(entry, "description"):
-                content = entry.description
+        response.raise_for_status()
 
-            pub_date = datetime.now()
-            if hasattr(entry, "published_parsed") and entry.published_parsed:
-                pub_date = datetime(*entry.published_parsed[:6])
-            elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-                pub_date = datetime(*entry.updated_parsed[:6])
+        root = ET.fromstring(response.text)
+        items: list[dict] = []
+        candidates: list[ET.Element] = [*root.findall(".//item"), *root.findall(".//entry")]
+
+        if not candidates:
+            candidates = [
+                node for node in root.iter()
+                if _local_name(node.tag).lower() in {"item", "entry"}
+            ]
+
+        for node in candidates:
+            title = _child_text(node, {"title"}) or node.findtext("title", default="").strip()
+            link = (
+                _child_text(node, {"link"})
+                or node.attrib.get("href", "").strip()
+                or ""
+            )
+            content = (
+                _child_text(node, {"description", "content", "summary", "encoded"})
+                or node.findtext("description", default="").strip()
+                or ""
+            )
+            pub_raw = (
+                _child_text(node, {"pubdate", "published", "updated"})
+                or node.findtext("pubDate", default="")
+                or node.findtext("published", default="")
+                or node.findtext("updated", default="")
+            )
 
             items.append({
-                "title": entry.get("title", ""),
-                "link": entry.get("link", ""),
+                "title": title,
+                "link": link,
                 "content": content,
-                "pubDate": pub_date,
+                "pubDate": _parse_pub_date(pub_raw),
                 "source": source["name"],
                 "region": source.get("region", "global"),
             })
+
         return items
     except Exception as e:
         print(f"Error fetching {source['name']}: {e}")

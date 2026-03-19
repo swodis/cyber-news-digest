@@ -13,7 +13,7 @@ fi
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
-if [[ -f package.json ]]; then
+if [[ "${INSTALL_NODE_DEPS:-0}" == "1" && -f package.json ]]; then
   if command -v npm >/dev/null 2>&1; then
     npm install
   else

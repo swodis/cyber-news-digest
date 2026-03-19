@@ -14,6 +14,12 @@ Cursor/VS Code can load this as a skill via `SKILL.md`.
 ```
 3. Edit `news-sources.json` to configure RSS feeds and keywords
 
+For environments with Node.js disabled or unavailable, Python-only setup works by default. If you need optional Node-based legacy support:
+
+```bash
+INSTALL_NODE_DEPS=1 ./setup.sh
+```
+
 For a single-command first run:
 
 ```bash
