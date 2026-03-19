@@ -1,50 +1,26 @@
 # Cyber News Digest
 
-Fetches, filters, and scores cybersecurity news from RSS feeds. Outputs raw article content for the AI to summarize.
-
-**No LLM API calls, no URLs in code, no secrets.** The script only fetches and prepares data. When you run it (e.g. "run it now" in Cursor), the AI in your context does the summarization.
-
-## Requirements
-
-- Node.js 18+
+Fetches, filters, summarizes and reports cybersecurity news using a local LLM (Ollama). Sends a daily brief to Telegram.
 
 ## Setup
 
+1. Copy `.env.example` to `.env` and set `TELEGRAM_TOKEN` and `TELEGRAM_CHAT_ID`
+2. Edit `news-sources.json` to configure RSS feeds and keywords
+3. Create venv and install deps:
+
 ```bash
-cd cyber-news-digest
-npm install
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
 ## Run
 
 ```bash
-npm start
-# or
 ./run.sh
-# or
-node index.js
+# or: python main.py
 ```
 
-## How it works
+## Requirements
 
-1. Fetches RSS feeds from sources in `news-sources.json`
-2. Deduplicates, scores (Europe/Scandinavia focus, critical threats)
-3. Outputs top articles with full content to stdout
-4. **You** (or Cursor, VS Code AI) summarize the output in your context
-
-## Configuration
-
-Edit `news-sources.json` to change sources, regions, max articles, and focus keywords.
-
-## Output
-
-- **stdout**: Raw article content, ready for the AI to summarize
-- **stderr**: Progress and logs
-
-## Seen tracking
-
-The skill stores shown article links in `data/seen.json` so each run shows only **new** articles. Entries are pruned after 30 days. Delete `data/seen.json` to reset.
-
-## Portable
-
-Copy the folder anywhere. No API keys, no model config, no URLs in code. Run `npm install` on the target machine.
+- Ollama with `qwen3:14b` (or set `OLLAMA_MODEL`)
+- Telegram bot token and chat ID

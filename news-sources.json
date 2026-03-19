@@ -15,7 +15,6 @@
     ],
     "regions": ["Europe", "Scandinavia"],
     "maxArticles": 5,
-    "overviewPool": 25,
     "maxSentences": 15,
     "trendingWeight": 2,
     "deduplicate": true,
